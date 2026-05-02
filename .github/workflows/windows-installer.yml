@@ -73,7 +73,7 @@ jobs:
       - name: Build Python backend executable
         shell: pwsh
         run: |
-          pyinstaller --clean --noconfirm --name autoglm-backend --onefile --collect-all phone_agent --add-data "apk/ADBKeyboard.apk;apk" backend_entry.py
+          pyinstaller --clean --noconfirm --name autoglm-backend --onefile --collect-all autoglm_phone_controller --collect-all phone_agent --add-data "apk/ADBKeyboard.apk;apk" backend_entry.py
 
       - name: Install Electron dependencies
         shell: pwsh
