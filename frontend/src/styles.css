@@ -30,7 +30,20 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   margin-bottom: 18px;
+}
+
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.device-live {
+  color: #607086;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .eyebrow {

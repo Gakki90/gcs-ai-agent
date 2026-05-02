@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from pathlib import Path
 import time
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -81,6 +82,25 @@ def list_devices() -> list[DeviceDto]:
         return [DeviceDto(serial=d.serial, state=d.state, description=d.description) for d in AdbClient().devices()]
     except AdbError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@app.websocket("/ws/devices")
+async def watch_devices(websocket: WebSocket) -> None:
+    await websocket.accept()
+    try:
+        while True:
+            try:
+                devices = [
+                    DeviceDto(serial=d.serial, state=d.state, description=d.description).model_dump()
+                    for d in await asyncio.to_thread(AdbClient().devices)
+                ]
+                await websocket.send_json({"type": "devices", "devices": devices, "error": None})
+            except Exception as exc:
+                logger.exception("device websocket poll failed")
+                await websocket.send_json({"type": "devices", "devices": [], "error": _error_detail(exc)})
+            await asyncio.sleep(1.5)
+    except WebSocketDisconnect:
+        logger.info("device websocket disconnected")
 
 
 @app.get("/api/devices/{device_id}/screen")

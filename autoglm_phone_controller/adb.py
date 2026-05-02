@@ -53,7 +53,7 @@ class AdbClient:
         self.serial = serial
 
     def devices(self) -> list[AdbDevice]:
-        result = _run_adb(["devices", "-l"])
+        result = _run_adb(["devices", "-l"], timeout=3)
         if result.returncode != 0:
             raise AdbError(result.stderr.strip() or "adb devices 执行失败。")
         return parse_adb_devices(result.stdout)

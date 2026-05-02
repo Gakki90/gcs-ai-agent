@@ -5,7 +5,10 @@
         <p class="eyebrow">AutoGLM Phone Cluster</p>
         <h1>手机集群任务工作台</h1>
       </div>
-      <button class="icon-btn" title="刷新设备" @click="loadDevices" :disabled="loadingDevices">↻</button>
+      <div class="top-actions">
+        <span class="device-live">{{ deviceSocketStatus }}</span>
+        <button class="icon-btn" title="刷新设备" @click="loadDevices" :disabled="loadingDevices">↻</button>
+      </div>
     </header>
 
     <section class="workspace">
@@ -87,6 +90,9 @@
               <button class="secondary" :disabled="busy" @click="runNextStep">继续下一步</button>
               <button class="danger" :disabled="busy" @click="finishSession">结束任务</button>
             </div>
+            <div v-else-if="showNewConversation" class="latest-actions">
+              <button class="primary" :disabled="busy" @click="newConversation">新对话</button>
+            </div>
           </div>
 
           <div class="composer">
@@ -162,15 +168,22 @@ const deviceError = ref("");
 const messagesRef = ref(null);
 let screenRefreshTimer = null;
 let screenRefreshTimer2 = null;
+let deviceSocket = null;
+let deviceSocketReconnectTimer = null;
+const deviceSocketStatus = ref("设备实时检测未连接");
 
 const readyDevices = computed(() => devices.value.filter((device) => device.state === "device"));
+const sessionEnded = computed(() => session.value && ["finished", "max_steps"].includes(session.value.status));
 const canSubmitComposer = computed(() => {
   if (!composerText.value.trim()) return false;
   if (!session.value) return Boolean(sourceDeviceId.value);
-  return session.value.status !== "finished";
+  return !sessionEnded.value;
 });
 const canReplay = computed(() => session.value?.steps?.length && targetDeviceIds.value.length);
-const showLatestActions = computed(() => session.value && session.value.status !== "finished");
+const showLatestActions = computed(() => {
+  return session.value && !sessionEnded.value;
+});
+const showNewConversation = computed(() => sessionEnded.value);
 const displayMessages = computed(() => {
   if (!session.value) {
     if (!sourceDeviceId.value) {
@@ -203,10 +216,7 @@ async function loadDevices() {
   loadingDevices.value = true;
   deviceError.value = "";
   try {
-    devices.value = await request("/api/devices");
-    if (!sourceDeviceId.value && readyDevices.value.length) {
-      sourceDeviceId.value = readyDevices.value[0].serial;
-    }
+    applyDeviceSnapshot(await request("/api/devices"));
   } catch (error) {
     devices.value = [];
     sourceDeviceId.value = "";
@@ -214,6 +224,66 @@ async function loadDevices() {
   } finally {
     loadingDevices.value = false;
   }
+}
+
+function applyDeviceSnapshot(nextDevices) {
+  devices.value = nextDevices;
+  const ready = nextDevices.filter((device) => device.state === "device");
+
+  if (sourceDeviceId.value && !ready.some((device) => device.serial === sourceDeviceId.value)) {
+    sourceDeviceId.value = "";
+  }
+  if (!sourceDeviceId.value && ready.length) {
+    sourceDeviceId.value = ready[0].serial;
+  }
+
+  targetDeviceIds.value = targetDeviceIds.value.filter((id) => ready.some((device) => device.serial === id));
+}
+
+function deviceWebSocketUrl() {
+  const base = API_BASE || window.location.origin;
+  const url = new URL(base, window.location.origin);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = "/ws/devices";
+  url.search = "";
+  return url.toString();
+}
+
+function connectDeviceSocket() {
+  if (deviceSocket) {
+    deviceSocket.close();
+  }
+  deviceSocketStatus.value = "设备实时检测连接中";
+  deviceSocket = new WebSocket(deviceWebSocketUrl());
+
+  deviceSocket.onopen = () => {
+    deviceSocketStatus.value = "设备实时检测中";
+    deviceError.value = "";
+  };
+
+  deviceSocket.onmessage = (event) => {
+    const payload = JSON.parse(event.data);
+    if (payload.error) {
+      deviceError.value = payload.error;
+      devices.value = [];
+      sourceDeviceId.value = "";
+      targetDeviceIds.value = [];
+      return;
+    }
+    deviceError.value = "";
+    applyDeviceSnapshot(payload.devices || []);
+  };
+
+  deviceSocket.onerror = () => {
+    deviceSocketStatus.value = "设备实时检测异常";
+  };
+
+  deviceSocket.onclose = () => {
+    deviceSocket = null;
+    deviceSocketStatus.value = "设备实时检测已断开";
+    if (deviceSocketReconnectTimer) clearTimeout(deviceSocketReconnectTimer);
+    deviceSocketReconnectTimer = setTimeout(connectDeviceSocket, 2000);
+  };
 }
 
 async function startSession() {
@@ -297,6 +367,14 @@ async function finishSession() {
   } finally {
     busy.value = false;
   }
+}
+
+function newConversation() {
+  session.value = null;
+  task.value = "";
+  composerText.value = "";
+  replayResults.value = [];
+  keyboardSetupResult.value = null;
 }
 
 async function replayToTargets() {
@@ -405,10 +483,18 @@ watch(
   }
 );
 
-onMounted(loadDevices);
+onMounted(() => {
+  loadDevices();
+  connectDeviceSocket();
+});
 
 onUnmounted(() => {
   if (screenRefreshTimer) clearTimeout(screenRefreshTimer);
   if (screenRefreshTimer2) clearTimeout(screenRefreshTimer2);
+  if (deviceSocketReconnectTimer) clearTimeout(deviceSocketReconnectTimer);
+  if (deviceSocket) {
+    deviceSocket.onclose = null;
+    deviceSocket.close();
+  }
 });
 </script>

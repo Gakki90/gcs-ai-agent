@@ -6,6 +6,7 @@ const http = require("http");
 
 const BACKEND_PORT = 18081;
 let backendProcess = null;
+let isQuitting = false;
 
 function isPackaged() {
   return app.isPackaged;
@@ -56,10 +57,39 @@ function startBackend() {
 
   backendProcess.on("exit", (code) => {
     console.log(`[backend] exited with code ${code}`);
+    backendProcess = null;
   });
 
   backendProcess.on("error", (error) => {
     dialog.showErrorBox("后端启动失败", String(error));
+  });
+}
+
+function stopBackend() {
+  if (!backendProcess || backendProcess.killed) {
+    backendProcess = null;
+    return Promise.resolve();
+  }
+
+  const pid = backendProcess.pid;
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(), 3000);
+    backendProcess.once("exit", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+
+    if (process.platform === "win32" && pid) {
+      spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
+      return;
+    }
+
+    backendProcess.kill("SIGTERM");
+    setTimeout(() => {
+      if (backendProcess && !backendProcess.killed) {
+        backendProcess.kill("SIGKILL");
+      }
+    }, 1200);
   });
 }
 
@@ -112,10 +142,12 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on("before-quit", () => {
-  if (backendProcess && !backendProcess.killed) {
-    backendProcess.kill();
-  }
+app.on("before-quit", async (event) => {
+  if (isQuitting) return;
+  event.preventDefault();
+  isQuitting = true;
+  await stopBackend();
+  app.quit();
 });
 
 app.on("window-all-closed", () => {
