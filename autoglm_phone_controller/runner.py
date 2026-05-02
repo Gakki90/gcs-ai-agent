@@ -31,21 +31,22 @@ def _construct(cls: type[Any], **values: Any) -> Any:
 
 def _load_phone_agent_classes() -> tuple[type[Any], type[Any], type[Any] | None]:
     try:
-        from phone_agent import PhoneAgent
-        from phone_agent.agent import AgentConfig
+        from phone_agent.agent import AgentConfig, PhoneAgent
         from phone_agent.model import ModelConfig
 
         return PhoneAgent, ModelConfig, AgentConfig
     except ImportError as exc:
         try:
-            from phone_agent import ModelConfig, PhoneAgent
+            from phone_agent.agent import PhoneAgent
+            from phone_agent.model import ModelConfig
 
             return PhoneAgent, ModelConfig, None
-        except ImportError:
+        except ImportError as fallback_exc:
             raise AutoGlmError(
                 "未安装 Open-AutoGLM 的 phone_agent。请在当前 .venv 已激活的终端里进入 "
                 "Open-AutoGLM 源码目录，然后运行: python -m pip install -r requirements.txt && "
-                "python -m pip install -e ."
+                "python -m pip install -e .。"
+                f"原始导入错误: {fallback_exc}"
             ) from exc
 
 
