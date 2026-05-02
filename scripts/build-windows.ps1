@@ -29,7 +29,7 @@ if (!(Test-Path "vendor\platform-tools\adb.exe")) {
   Write-Host "请把 Windows platform-tools 放到 vendor\platform-tools，至少包含 adb.exe、AdbWinApi.dll、AdbWinUsbApi.dll。" -ForegroundColor Yellow
 }
 
-.\.venv\Scripts\pyinstaller.exe --clean --noconfirm --name autoglm-backend --onefile --collect-all autoglm_phone_controller --collect-all phone_agent --hidden-import phone_agent.agent --hidden-import phone_agent.model --hidden-import phone_agent.model.client --add-data "apk/ADBKeyboard.apk;apk" backend_entry.py
+.\.venv\Scripts\pyinstaller.exe --clean --noconfirm --name autoglm-backend --onefile --collect-all autoglm_phone_controller --collect-all phone_agent --collect-all openai --hidden-import phone_agent.agent --hidden-import phone_agent.model --hidden-import phone_agent.model.client --hidden-import openai --add-data "apk/ADBKeyboard.apk;apk" backend_entry.py
 .\dist\autoglm-backend.exe --check-imports
 
 npm install

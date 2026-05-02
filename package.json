@@ -6,7 +6,7 @@
   "scripts": {
     "electron:dev": "electron .",
     "build:frontend": "npm --prefix frontend run build",
-    "build:backend:win": "pyinstaller --clean --noconfirm --name autoglm-backend --onefile --collect-all autoglm_phone_controller --collect-all phone_agent --hidden-import phone_agent.agent --hidden-import phone_agent.model --hidden-import phone_agent.model.client --add-data \"apk/ADBKeyboard.apk;apk\" backend_entry.py",
+    "build:backend:win": "pyinstaller --clean --noconfirm --name autoglm-backend --onefile --collect-all autoglm_phone_controller --collect-all phone_agent --collect-all openai --hidden-import phone_agent.agent --hidden-import phone_agent.model --hidden-import phone_agent.model.client --hidden-import openai --add-data \"apk/ADBKeyboard.apk;apk\" backend_entry.py",
     "electron:pack": "electron-builder --win --publish never",
     "pack:win": "npm run build:frontend && npm run build:backend:win && electron-builder --win --publish never",
     "dist:win": "npm run pack:win"
