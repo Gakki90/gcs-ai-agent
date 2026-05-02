@@ -29,7 +29,7 @@ jobs:
         shell: pwsh
         run: |
           @"
-          BIGMODEL_API_KEY=your_test_key_here
+          BIGMODEL_API_KEY=a24a7561787e478ab6bfa3195dcb6d16.6xoLLm1GivthHfOB
           AUTOGLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
           AUTOGLM_MODEL=autoglm-phone
           "@ | Set-Content -Encoding UTF8 .env
