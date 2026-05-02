@@ -7,8 +7,8 @@
     "electron:dev": "electron .",
     "build:frontend": "npm --prefix frontend run build",
     "build:backend:win": "pyinstaller --clean --noconfirm --name autoglm-backend --onefile --collect-all phone_agent --add-data \"apk/ADBKeyboard.apk;apk\" backend_entry.py",
-    "electron:pack": "electron-builder --win",
-    "pack:win": "npm run build:frontend && npm run build:backend:win && electron-builder --win",
+    "electron:pack": "electron-builder --win --publish never",
+    "pack:win": "npm run build:frontend && npm run build:backend:win && electron-builder --win --publish never",
     "dist:win": "npm run pack:win"
   },
   "devDependencies": {
