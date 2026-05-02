@@ -40,6 +40,7 @@ function startBackend() {
   const childEnv = {
     ...process.env,
     AUTOGLM_APP_ROOT: root,
+    AUTOGLM_LOG_DIR: logsDir,
     PYTHONUTF8: "1",
     PYTHONIOENCODING: "utf-8",
   };
