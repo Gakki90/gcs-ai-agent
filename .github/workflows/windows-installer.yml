@@ -57,6 +57,7 @@ jobs:
         shell: pwsh
         run: |
           git clone https://github.com/zai-org/Open-AutoGLM.git ..\Open-AutoGLM
+          python scripts\patch-open-autoglm.py ..\Open-AutoGLM
           Push-Location ..\Open-AutoGLM
           python -m pip install -r requirements.txt
           python -m pip install -e .

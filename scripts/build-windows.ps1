@@ -11,6 +11,7 @@ if (!(Test-Path ".venv")) {
 .\.venv\Scripts\python.exe -m pip install pyinstaller
 
 if (Test-Path "..\Open-AutoGLM") {
+  .\.venv\Scripts\python.exe scripts\patch-open-autoglm.py ..\Open-AutoGLM
   Push-Location ..\Open-AutoGLM
   ..\gcs-agent-py-1.0\.venv\Scripts\python.exe -m pip install -r requirements.txt
   ..\gcs-agent-py-1.0\.venv\Scripts\python.exe -m pip install -e .
