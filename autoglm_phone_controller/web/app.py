@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import logging
+import os
 from pathlib import Path
 import time
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from autoglm_phone_controller.adb import AdbClient, AdbError
@@ -24,6 +26,18 @@ from autoglm_phone_controller.web.session_store import STATIC_DIR, replay_sessio
 app = FastAPI(title="AutoGLM Phone Cluster Console")
 configure_packaged_environment()
 
+LOG_DIR = Path(os.getenv("AUTOGLM_LOG_DIR") or "logs")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_DIR / "backend-app.log", encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+logger = logging.getLogger(__name__)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -38,6 +52,22 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 frontend_assets = resource_path("frontend", "dist", "assets")
 if frontend_assets.exists():
     app.mount("/assets", StaticFiles(directory=frontend_assets), name="assets")
+
+
+def _error_detail(exc: Exception) -> str:
+    message = str(exc) or exc.__class__.__name__
+    return f"{exc.__class__.__name__}: {message}"
+
+
+def _raise_logged_500(context: str, exc: Exception) -> None:
+    logger.exception("%s failed", context)
+    raise HTTPException(status_code=500, detail=_error_detail(exc)) from exc
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled error during %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": _error_detail(exc)})
 
 
 @app.get("/api/health")
@@ -86,7 +116,7 @@ def create_session(request: StartSessionRequest):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        _raise_logged_500("create session", exc)
 
 
 @app.get("/api/sessions/{session_id}")
@@ -104,7 +134,7 @@ def run_step(session_id: str, request: StepRequest):
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="session not found") from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        _raise_logged_500("run session step", exc)
 
 
 @app.post("/api/sessions/{session_id}/finish")
