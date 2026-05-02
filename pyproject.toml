@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autoglm-phone-controller"
+version = "0.1.0"
+description = "Control an Android phone over USB/ADB with Zhipu AutoGLM Phone."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110.0",
+  "pydantic>=2.6.0",
+  "python-dotenv>=1.0.1",
+  "uvicorn[standard]>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+]
+
+[project.scripts]
+autoglm-phone = "autoglm_phone_controller.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["autoglm_phone_controller*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

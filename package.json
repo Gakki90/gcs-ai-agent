@@ -1,0 +1,61 @@
+{
+  "name": "autoglm-phone-cluster",
+  "version": "0.1.0",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "electron:dev": "electron .",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:backend:win": "pyinstaller --clean --noconfirm --name autoglm-backend --onefile --collect-all phone_agent --add-data \"apk/ADBKeyboard.apk;apk\" backend_entry.py",
+    "electron:pack": "electron-builder --win",
+    "pack:win": "npm run build:frontend && npm run build:backend:win && electron-builder --win",
+    "dist:win": "npm run pack:win"
+  },
+  "devDependencies": {
+    "electron": "^30.5.1",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.autoglm.phonecluster",
+    "productName": "AutoGLM Phone Cluster",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/autoglm-backend.exe",
+        "to": "backend/autoglm-backend.exe"
+      },
+      {
+        "from": "frontend/dist",
+        "to": "frontend/dist"
+      },
+      {
+        "from": "apk",
+        "to": "apk"
+      },
+      {
+        "from": ".env",
+        "to": ".env"
+      },
+      {
+        "from": "vendor/platform-tools",
+        "to": "platform-tools"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
