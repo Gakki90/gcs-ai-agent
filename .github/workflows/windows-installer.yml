@@ -7,6 +7,9 @@ on:
       - main
       - master
 
+permissions:
+  contents: write
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -90,3 +93,20 @@ jobs:
         with:
           name: AutoGLM-Phone-Cluster-Windows-Installer
           path: release/*.exe
+
+      - name: Publish latest Windows release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: windows-latest
+          name: Windows Latest Installer
+          body: |
+            AutoGLM Phone Cluster Windows installer built from `${{ github.sha }}`.
+
+            This release is updated automatically after every successful main branch build.
+          artifacts: release/*.exe
+          allowUpdates: true
+          removeArtifacts: true
+          replacesArtifacts: true
+          prerelease: true
+          makeLatest: true
+          token: ${{ secrets.GITHUB_TOKEN }}
