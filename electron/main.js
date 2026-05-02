@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const { spawn } = require("child_process");
 const http = require("http");
 
@@ -31,9 +32,16 @@ function backendArgs() {
 
 function startBackend() {
   const root = appRoot();
+  const logsDir = path.join(path.dirname(app.getPath("exe")), "logs");
+  fs.mkdirSync(logsDir, { recursive: true });
+  const backendLog = fs.createWriteStream(path.join(logsDir, "backend.log"), { flags: "a" });
+  const backendErrorLog = fs.createWriteStream(path.join(logsDir, "backend-error.log"), { flags: "a" });
+
   const childEnv = {
     ...process.env,
     AUTOGLM_APP_ROOT: root,
+    PYTHONUTF8: "1",
+    PYTHONIOENCODING: "utf-8",
   };
 
   backendProcess = spawn(backendExecutable(), backendArgs(), {
@@ -41,6 +49,9 @@ function startBackend() {
     env: childEnv,
     windowsHide: true,
   });
+
+  backendProcess.stdout.pipe(backendLog);
+  backendProcess.stderr.pipe(backendErrorLog);
 
   backendProcess.on("exit", (code) => {
     console.log(`[backend] exited with code ${code}`);

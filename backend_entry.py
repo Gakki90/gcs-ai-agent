@@ -1,12 +1,24 @@
 from __future__ import annotations
 
-import uvicorn
+import os
 import sys
+
+import uvicorn
 
 from autoglm_phone_controller.runtime import configure_packaged_environment
 
 
+def _configure_windows_stdio() -> None:
+    os.environ.setdefault("PYTHONUTF8", "1")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 if __name__ == "__main__":
+    _configure_windows_stdio()
     configure_packaged_environment()
     if "--check-imports" in sys.argv:
         from autoglm_phone_controller.runner import _load_phone_agent_classes
