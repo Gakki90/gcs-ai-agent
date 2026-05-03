@@ -203,9 +203,35 @@ h2 {
 
 .chat-card {
   min-height: calc(100vh - 88px);
-  display: grid;
-  grid-template-rows: auto 1fr auto;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
+}
+
+.mode-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #607086;
+  font-size: 13px;
+}
+
+.mode-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #d7dfec;
+  border-radius: 6px;
+  color: #23324a;
+  cursor: pointer;
+}
+
+.mode-option.active {
+  border-color: #2563eb;
+  background: #eef4ff;
+  color: #1d4ed8;
 }
 
 .composer {
@@ -231,6 +257,7 @@ h2 {
 }
 
 .messages {
+  flex: 1;
   min-height: 320px;
   max-height: calc(100vh - 395px);
   overflow: auto;

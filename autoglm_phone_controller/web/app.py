@@ -18,6 +18,7 @@ from autoglm_phone_controller.web.models import (
     DeviceDto,
     ReplayRequest,
     ReplayResponse,
+    RunRequest,
     StartSessionRequest,
     StepRequest,
 )
@@ -155,6 +156,16 @@ def run_step(session_id: str, request: StepRequest):
         raise HTTPException(status_code=404, detail="session not found") from exc
     except Exception as exc:
         _raise_logged_500("run session step", exc)
+
+
+@app.post("/api/sessions/{session_id}/run")
+def run_session(session_id: str, request: RunRequest):
+    try:
+        return store.run(session_id, request.hint)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="session not found") from exc
+    except Exception as exc:
+        _raise_logged_500("run session", exc)
 
 
 @app.post("/api/sessions/{session_id}/finish")

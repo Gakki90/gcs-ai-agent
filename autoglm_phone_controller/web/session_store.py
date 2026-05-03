@@ -44,6 +44,7 @@ class AgentSession:
     pending_hint: str | None = None
     pending_takeover: str | None = None
     workflow_prompt: str | None = None
+    summary: str | None = None
 
 
 class SessionStore:
@@ -84,12 +85,35 @@ class SessionStore:
 
     def step(self, session_id: str, hint: str | None = None) -> SessionDto:
         session = self.get(session_id)
+        self._run_one_step(session, hint=hint, append_intermediate=True)
+        return self.to_dto(session)
+
+    def run(self, session_id: str, hint: str | None = None) -> SessionDto:
+        session = self.get(session_id)
+        first_iteration = True
+        while session.status not in ("finished", "max_steps", "waiting_takeover"):
+            self._run_one_step(
+                session,
+                hint=hint if first_iteration else None,
+                append_intermediate=False,
+            )
+            first_iteration = False
+        return self.to_dto(session)
+
+    def _run_one_step(
+        self,
+        session: AgentSession,
+        *,
+        hint: str | None = None,
+        append_intermediate: bool,
+    ) -> None:
         if session.status == "finished":
-            return self.to_dto(session)
+            return
         if len(session.steps) >= session.max_steps:
             session.status = "max_steps"
+            session.summary = "已达到最大步数，任务未确认完成。"
             session.messages.append({"role": "system", "content": "已达到最大步数。"})
-            return self.to_dto(session)
+            return
 
         first_step = len(session.steps) == 0
         step_task = build_user_task_prompt(session.task, session.platform)
@@ -126,24 +150,44 @@ class SessionStore:
             platform=session.platform,
             steps=session.steps,
         )
-        session.messages.append(
-            {
-                "role": "assistant",
-                "content": session.pending_takeover or recorded.thinking or recorded.message or "模型已返回动作。",
-                "action": recorded.action,
-                "imageUrl": recorded.image_url,
-            }
-        )
+        assistant_message = session.pending_takeover or recorded.thinking or recorded.message or "模型已返回动作。"
         if session.pending_takeover:
             session.status = "waiting_takeover"
+            session.messages.append(
+                {
+                    "role": "assistant",
+                    "content": assistant_message,
+                    "action": recorded.action,
+                    "imageUrl": recorded.image_url,
+                }
+            )
             session.pending_takeover = None
-            return self.to_dto(session)
+            return
         session.status = "finished" if result.finished else "waiting"
-        return self.to_dto(session)
+        if result.finished:
+            session.summary = recorded.message or recorded.thinking or "任务已完成。"
+            session.messages.append(
+                {
+                    "role": "assistant",
+                    "content": session.summary,
+                    "action": recorded.action,
+                    "imageUrl": recorded.image_url,
+                }
+            )
+        elif append_intermediate:
+            session.messages.append(
+                {
+                    "role": "assistant",
+                    "content": assistant_message,
+                    "action": recorded.action,
+                    "imageUrl": recorded.image_url,
+                }
+            )
 
     def finish(self, session_id: str, message: str = "用户提前结束任务。") -> SessionDto:
         session = self.get(session_id)
         session.status = "finished"
+        session.summary = message
         session.messages.append({"role": "system", "content": message})
         session.workflow_prompt = build_workflow_prompt(
             original_task=session.task,
@@ -163,6 +207,7 @@ class SessionStore:
             steps=session.steps,
             messages=session.messages,
             workflow_prompt=session.workflow_prompt,
+            summary=session.summary,
         )
 
     def _attach_recorder(self, session: AgentSession) -> None:

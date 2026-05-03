@@ -82,12 +82,24 @@
             <span class="status">{{ session ? `${session.status} · ${session.platform}` : "未开始" }}</span>
           </div>
 
+          <div v-if="!session" class="mode-row">
+            <span>执行方式</span>
+            <label :class="['mode-option', executionMode === 'auto' ? 'active' : '']">
+              <input v-model="executionMode" type="radio" value="auto" />
+              自动执行
+            </label>
+            <label :class="['mode-option', executionMode === 'step' ? 'active' : '']">
+              <input v-model="executionMode" type="radio" value="step" />
+              单步调试
+            </label>
+          </div>
+
           <div ref="messagesRef" class="messages">
             <article v-for="(message, index) in displayMessages" :key="index" :class="['bubble', message.role]">
               <p>{{ message.content }}</p>
             </article>
             <div v-if="showLatestActions" class="latest-actions">
-              <button class="secondary" :disabled="busy" @click="runNextStep">继续下一步</button>
+              <button class="secondary" :disabled="busy" @click="continueSession">{{ continueButtonText }}</button>
               <button class="danger" :disabled="busy" @click="finishSession">结束任务</button>
             </div>
             <div v-else-if="showNewConversation" class="latest-actions">
@@ -158,6 +170,7 @@ const targetDeviceIds = ref([]);
 const task = ref("");
 const DEFAULT_MAX_STEPS = 30;
 const session = ref(null);
+const executionMode = ref("auto");
 const composerText = ref("");
 const screenUrl = ref("");
 const replayResults = ref([]);
@@ -180,6 +193,7 @@ const canSubmitComposer = computed(() => {
   return !sessionEnded.value;
 });
 const canReplay = computed(() => session.value?.steps?.length && targetDeviceIds.value.length);
+const continueButtonText = computed(() => (executionMode.value === "auto" ? "继续执行" : "继续下一步"));
 const showLatestActions = computed(() => {
   return session.value && !sessionEnded.value;
 });
@@ -301,7 +315,11 @@ async function startSession() {
         max_steps: DEFAULT_MAX_STEPS
       })
     });
-    await runNextStep();
+    if (executionMode.value === "auto") {
+      await runToFinish();
+    } else {
+      await runNextStep();
+    }
   } catch (error) {
     composerText.value = content;
     task.value = "";
@@ -327,17 +345,37 @@ async function runNextStep() {
   }
 }
 
+async function runToFinish(hint = null) {
+  if (!session.value) return;
+  busy.value = true;
+  try {
+    session.value = await request(`/api/sessions/${session.value.id}/run`, {
+      method: "POST",
+      body: JSON.stringify({ hint })
+    });
+    refreshScreenAfterAction();
+  } catch (error) {
+    alert(error.message);
+  } finally {
+    busy.value = false;
+  }
+}
+
 async function sendHint() {
   if (!session.value || !composerText.value.trim()) return;
   const content = composerText.value.trim();
   composerText.value = "";
   busy.value = true;
   try {
-    session.value = await request(`/api/sessions/${session.value.id}/step`, {
-      method: "POST",
-      body: JSON.stringify({ hint: content })
-    });
-    refreshScreenAfterAction();
+    if (executionMode.value === "auto") {
+      await runToFinish(content);
+    } else {
+      session.value = await request(`/api/sessions/${session.value.id}/step`, {
+        method: "POST",
+        body: JSON.stringify({ hint: content })
+      });
+      refreshScreenAfterAction();
+    }
   } catch (error) {
     composerText.value = content;
     alert(error.message);
@@ -352,6 +390,14 @@ function submitComposer() {
     return;
   }
   sendHint();
+}
+
+function continueSession() {
+  if (executionMode.value === "auto") {
+    runToFinish();
+    return;
+  }
+  runNextStep();
 }
 
 async function finishSession() {

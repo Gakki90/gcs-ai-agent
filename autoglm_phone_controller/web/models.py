@@ -19,6 +19,10 @@ class StepRequest(BaseModel):
     hint: str | None = None
 
 
+class RunRequest(BaseModel):
+    hint: str | None = None
+
+
 class ReplayRequest(BaseModel):
     target_device_ids: list[str] = Field(default_factory=list)
     max_steps: int | None = None
@@ -47,6 +51,7 @@ class SessionDto(BaseModel):
     steps: list[RecordedStepDto]
     messages: list[dict]
     workflow_prompt: str | None = None
+    summary: str | None = None
 
 
 class ReplayResultDto(BaseModel):
