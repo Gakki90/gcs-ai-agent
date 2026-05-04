@@ -23,7 +23,16 @@ def resource_path(*parts: str) -> Path:
     return candidate
 
 
+def adb_executable() -> str:
+    executable = "adb.exe" if sys.platform.startswith("win") else "adb"
+    bundled = resource_path("platform-tools", executable)
+    if bundled.exists():
+        return str(bundled)
+    return "adb"
+
+
 def configure_packaged_environment() -> None:
     platform_tools = resource_path("platform-tools")
     if platform_tools.exists():
         os.environ["PATH"] = str(platform_tools) + os.pathsep + os.environ.get("PATH", "")
+        os.environ.setdefault("ADB_SERVER_PORT", "5038")

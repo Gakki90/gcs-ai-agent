@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 import re
+
+from .runtime import adb_executable
 
 
 class AdbError(RuntimeError):
@@ -18,7 +21,7 @@ class AdbDevice:
 
 
 def _run_adb(args: list[str], *, serial: str | None = None, timeout: int = 20) -> subprocess.CompletedProcess[str]:
-    command = ["adb"]
+    command = [adb_executable()]
     if serial:
         command += ["-s", serial]
     command += args
@@ -28,6 +31,40 @@ def _run_adb(args: list[str], *, serial: str | None = None, timeout: int = 20) -
         raise AdbError("未找到 adb，请先安装 Android Platform Tools，并确保 adb 在 PATH 中。") from exc
     except subprocess.TimeoutExpired as exc:
         raise AdbError(f"adb 命令超时: {' '.join(command)}") from exc
+
+
+def _restart_adb_server() -> None:
+    adb = adb_executable()
+    for args in (["kill-server"], ["start-server"]):
+        try:
+            subprocess.run([adb, *args], capture_output=True, text=True, timeout=10, check=False)
+            time.sleep(0.4)
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return
+
+
+def _run_adb_with_server_retry(
+    args: list[str], *, serial: str | None = None, timeout: int = 20
+) -> subprocess.CompletedProcess[str]:
+    last_error: AdbError | None = None
+    for attempt in range(3):
+        try:
+            result = _run_adb(args, serial=serial, timeout=timeout)
+        except AdbError as exc:
+            last_error = exc
+            if "超时" not in str(exc) or attempt == 2:
+                raise
+            _restart_adb_server()
+            continue
+
+        output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+        if result.returncode != 0 and "failed to check server version" in output.lower() and attempt < 2:
+            _restart_adb_server()
+            continue
+        return result
+    if last_error:
+        raise last_error
+    return _run_adb(args, serial=serial, timeout=timeout)
 
 
 def parse_adb_devices(output: str) -> list[AdbDevice]:
@@ -53,7 +90,7 @@ class AdbClient:
         self.serial = serial
 
     def devices(self) -> list[AdbDevice]:
-        result = _run_adb(["devices", "-l"], timeout=3)
+        result = _run_adb_with_server_retry(["devices", "-l"], timeout=12)
         if result.returncode != 0:
             raise AdbError(result.stderr.strip() or "adb devices 执行失败。")
         return parse_adb_devices(result.stdout)
@@ -133,7 +170,7 @@ class AdbClient:
 
     def screenshot(self, output_path: Path) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        command = ["adb"]
+        command = [adb_executable()]
         if self.serial:
             command += ["-s", self.serial]
         command += ["exec-out", "screencap", "-p"]

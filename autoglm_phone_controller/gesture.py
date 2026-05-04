@@ -6,6 +6,8 @@ import subprocess
 import time
 from dataclasses import dataclass
 
+from .runtime import adb_executable
+
 
 @dataclass(frozen=True)
 class GestureConfig:
@@ -136,7 +138,7 @@ class GestureController:
 
     @staticmethod
     def _adb(device_id: str | None, args: list[str]) -> None:
-        command = ["adb"]
+        command = [adb_executable()]
         if device_id:
             command += ["-s", device_id]
         subprocess.run(command + args, capture_output=True)
