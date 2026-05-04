@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -7,6 +9,9 @@ from pathlib import Path
 import re
 
 from .runtime import adb_executable
+
+
+logger = logging.getLogger(__name__)
 
 
 class AdbError(RuntimeError):
@@ -25,21 +30,68 @@ def _run_adb(args: list[str], *, serial: str | None = None, timeout: int = 20) -
     if serial:
         command += ["-s", serial]
     command += args
+    started_at = time.monotonic()
+    logger.debug(
+        "adb start command=%s timeout=%s adb_server_port=%s",
+        _format_command(command),
+        timeout,
+        os.getenv("ADB_SERVER_PORT") or "5037",
+    )
     try:
-        return subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
+        result = subprocess.run(command, capture_output=True, text=True, timeout=timeout, check=False)
     except FileNotFoundError as exc:
+        logger.exception("adb executable not found command=%s", _format_command(command))
         raise AdbError("未找到 adb，请先安装 Android Platform Tools，并确保 adb 在 PATH 中。") from exc
     except subprocess.TimeoutExpired as exc:
+        elapsed_ms = round((time.monotonic() - started_at) * 1000)
+        logger.error("adb timeout elapsed_ms=%s command=%s", elapsed_ms, _format_command(command))
         raise AdbError(f"adb 命令超时: {' '.join(command)}") from exc
+    elapsed_ms = round((time.monotonic() - started_at) * 1000)
+    log_method = logger.debug if result.returncode == 0 else logger.error
+    log_method(
+        "adb done returncode=%s elapsed_ms=%s command=%s stdout=%s stderr=%s",
+        result.returncode,
+        elapsed_ms,
+        _format_command(command),
+        _compact_output(result.stdout),
+        _compact_output(result.stderr),
+    )
+    return result
+
+
+def _format_command(command: list[str]) -> str:
+    return " ".join(str(part) for part in command)
+
+
+def _compact_output(value: str | bytes | None, *, limit: int = 2000) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        text = value.decode(errors="replace")
+    else:
+        text = value
+    text = text.strip().replace("\r\n", "\n")
+    if len(text) > limit:
+        return text[:limit] + "...<truncated>"
+    return text
 
 
 def _restart_adb_server() -> None:
     adb = adb_executable()
+    logger.warning("restarting adb server adb=%s port=%s", adb, os.getenv("ADB_SERVER_PORT") or "5037")
     for args in (["kill-server"], ["start-server"]):
         try:
-            subprocess.run([adb, *args], capture_output=True, text=True, timeout=10, check=False)
+            result = subprocess.run([adb, *args], capture_output=True, text=True, timeout=10, check=False)
+            logger.warning(
+                "adb server command returncode=%s command=%s stdout=%s stderr=%s",
+                result.returncode,
+                _format_command([adb, *args]),
+                _compact_output(result.stdout),
+                _compact_output(result.stderr),
+            )
             time.sleep(0.4)
         except (FileNotFoundError, subprocess.TimeoutExpired):
+            logger.exception("adb server command failed command=%s", _format_command([adb, *args]))
             return
 
 
@@ -54,11 +106,18 @@ def _run_adb_with_server_retry(
             last_error = exc
             if "超时" not in str(exc) or attempt == 2:
                 raise
+            logger.warning("adb retry after timeout attempt=%s args=%s", attempt + 1, args)
             _restart_adb_server()
             continue
 
         output = "\n".join(part for part in (result.stdout, result.stderr) if part)
         if result.returncode != 0 and "failed to check server version" in output.lower() and attempt < 2:
+            logger.warning(
+                "adb retry after server version failure attempt=%s args=%s output=%s",
+                attempt + 1,
+                args,
+                _compact_output(output),
+            )
             _restart_adb_server()
             continue
         return result
@@ -93,7 +152,9 @@ class AdbClient:
         result = _run_adb_with_server_retry(["devices", "-l"], timeout=12)
         if result.returncode != 0:
             raise AdbError(result.stderr.strip() or "adb devices 执行失败。")
-        return parse_adb_devices(result.stdout)
+        devices = parse_adb_devices(result.stdout)
+        logger.info("adb devices found count=%s devices=%s", len(devices), devices)
+        return devices
 
     def select_device(self) -> AdbDevice:
         devices = self.devices()
@@ -162,6 +223,9 @@ class AdbClient:
     def enable_ime(self, ime_id: str) -> str:
         return self.shell(f"ime enable {ime_id}", timeout=10)
 
+    def enabled_imes(self) -> str:
+        return self.shell("ime list -s", timeout=10)
+
     def set_ime(self, ime_id: str) -> str:
         return self.shell(f"ime set {ime_id}", timeout=10)
 
@@ -174,13 +238,30 @@ class AdbClient:
         if self.serial:
             command += ["-s", self.serial]
         command += ["exec-out", "screencap", "-p"]
+        started_at = time.monotonic()
+        logger.debug("adb screenshot start command=%s output=%s", _format_command(command), output_path)
         try:
             result = subprocess.run(command, capture_output=True, timeout=30, check=False)
         except FileNotFoundError as exc:
+            logger.exception("adb screenshot executable not found command=%s", _format_command(command))
             raise AdbError("未找到 adb，请先安装 Android Platform Tools，并确保 adb 在 PATH 中。") from exc
         except subprocess.TimeoutExpired as exc:
+            logger.error("adb screenshot timeout command=%s", _format_command(command))
             raise AdbError("截图命令超时。") from exc
         if result.returncode != 0:
-            raise AdbError(result.stderr.decode(errors="replace").strip() or "截图失败。")
+            stderr = result.stderr.decode(errors="replace").strip()
+            logger.error(
+                "adb screenshot failed returncode=%s elapsed_ms=%s stderr=%s",
+                result.returncode,
+                round((time.monotonic() - started_at) * 1000),
+                _compact_output(stderr),
+            )
+            raise AdbError(stderr or "截图失败。")
         output_path.write_bytes(result.stdout)
+        logger.debug(
+            "adb screenshot done elapsed_ms=%s bytes=%s output=%s",
+            round((time.monotonic() - started_at) * 1000),
+            len(result.stdout),
+            output_path,
+        )
         return output_path

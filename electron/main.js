@@ -7,6 +7,17 @@ const http = require("http");
 const BACKEND_PORT = 18081;
 let backendProcess = null;
 let isQuitting = false;
+let electronLogPath = null;
+
+function writeElectronLog(message) {
+  if (!electronLogPath) return;
+  const line = `${new Date().toISOString()} ${message}\n`;
+  try {
+    fs.appendFileSync(electronLogPath, line, "utf8");
+  } catch (_) {
+    // Logging must never block app startup.
+  }
+}
 
 function isPackaged() {
   return app.isPackaged;
@@ -35,7 +46,10 @@ function startBackend() {
   const root = appRoot();
   const logsDir = path.join(path.dirname(app.getPath("exe")), "logs");
   fs.mkdirSync(logsDir, { recursive: true });
-  const backendLog = fs.createWriteStream(path.join(logsDir, "backend.log"), { flags: "a" });
+  electronLogPath = path.join(logsDir, "electron.log");
+  writeElectronLog(`app start packaged=${isPackaged()} root=${root} exe=${app.getPath("exe")}`);
+
+  const backendLog = fs.createWriteStream(path.join(logsDir, "backend-output.log"), { flags: "a" });
   const backendErrorLog = fs.createWriteStream(path.join(logsDir, "backend-error.log"), { flags: "a" });
 
   const childEnv = {
@@ -51,16 +65,19 @@ function startBackend() {
     env: childEnv,
     windowsHide: true,
   });
+  writeElectronLog(`backend spawn pid=${backendProcess.pid} command=${backendExecutable()} args=${backendArgs().join(" ")}`);
 
   backendProcess.stdout.pipe(backendLog);
   backendProcess.stderr.pipe(backendErrorLog);
 
   backendProcess.on("exit", (code) => {
+    writeElectronLog(`backend exit code=${code}`);
     console.log(`[backend] exited with code ${code}`);
     backendProcess = null;
   });
 
   backendProcess.on("error", (error) => {
+    writeElectronLog(`backend spawn error=${String(error)}`);
     dialog.showErrorBox("后端启动失败", String(error));
   });
 }
@@ -80,6 +97,7 @@ function stopBackend() {
     });
 
     if (process.platform === "win32" && pid) {
+      writeElectronLog(`backend taskkill pid=${pid}`);
       spawn("taskkill", ["/pid", String(pid), "/T", "/F"], { windowsHide: true });
       return;
     }

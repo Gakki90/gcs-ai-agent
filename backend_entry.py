@@ -3,9 +3,6 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import TextIO
-
-_LOG_STREAMS: list[TextIO] = []
 
 
 def _default_log_dir() -> Path:
@@ -21,16 +18,6 @@ def _default_log_dir() -> Path:
 def _configure_windows_stdio(*, redirect_to_file: bool) -> None:
     os.environ.setdefault("PYTHONUTF8", "1")
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
-
-    if redirect_to_file:
-        log_dir = _default_log_dir()
-        log_dir.mkdir(parents=True, exist_ok=True)
-        stdout_file = (log_dir / "backend-python-stdout.log").open("a", encoding="utf-8", errors="replace")
-        stderr_file = (log_dir / "backend-python-stderr.log").open("a", encoding="utf-8", errors="replace")
-        _LOG_STREAMS.extend([stdout_file, stderr_file])
-        sys.stdout = stdout_file
-        sys.stderr = stderr_file
-        return
 
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
