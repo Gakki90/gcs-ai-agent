@@ -1,166 +1,279 @@
 <template>
-  <main class="shell">
-    <header class="topbar">
-      <div>
-        <p class="eyebrow">AutoGLM Phone Cluster</p>
-        <h1>手机集群任务工作台</h1>
-      </div>
-      <div class="top-actions">
-        <span class="device-live">{{ deviceSocketStatus }}</span>
-        <button class="icon-btn" title="刷新设备" @click="loadDevices" :disabled="loadingDevices">↻</button>
-      </div>
-    </header>
-
-    <section class="workspace">
-      <aside class="left-pane">
-        <section class="section">
-          <div class="section-head">
-            <h2>源设备</h2>
-            <span class="count">{{ readyDevices.length }} 在线</span>
-          </div>
-          <div class="device-list">
-            <label v-for="device in devices" :key="device.serial" class="device-row">
-              <input
-                type="radio"
-                name="source-device"
-                :value="device.serial"
-                v-model="sourceDeviceId"
-                :disabled="device.state !== 'device'"
-              />
-              <span>
-                <strong>{{ device.serial }}</strong>
-                <small>{{ device.state }}</small>
-              </span>
-            </label>
-          </div>
-          <p v-if="deviceError" class="error-text">{{ deviceError }}</p>
-          <button class="secondary full setup-btn" :disabled="!sourceDeviceId || busy" @click="setupAdbKeyboard">
-            安装并启用 ADB Keyboard
+  <main class="min-h-screen bg-background text-foreground">
+    <div class="mx-auto flex min-h-screen max-w-[1720px] flex-col gap-5 px-6 py-5">
+      <header class="flex items-center justify-between gap-4 rounded-lg border bg-card px-5 py-4 shadow-sm">
+        <div class="min-w-0">
+          <h1 class="text-2xl font-semibold tracking-tight">手机集群任务工作台</h1>
+        </div>
+        <div class="relative flex items-center gap-2">
+          <span class="inline-flex h-8 items-center gap-2 rounded-md border bg-muted px-3 text-xs text-muted-foreground">
+            <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
+            {{ deviceSocketStatus }}
+          </span>
+          <button class="btn btn-outline h-9 px-3" @click="setupPanelOpen = !setupPanelOpen">
+            <Keyboard class="h-4 w-4" />
+            输入法设置
           </button>
-          <div v-if="keyboardSetupResult" class="setup-result">
-            <p :class="keyboardSetupResult.ok ? 'result-line ok' : 'result-line bad'">
-              {{ keyboardSetupResult.ok ? "ADB Keyboard 已就绪" : "ADB Keyboard 设置未完全成功" }}
-            </p>
-            <p v-for="step in keyboardSetupResult.steps" :key="step.name" :class="['result-line', step.ok ? 'ok' : 'bad']">
-              {{ step.name }} · {{ step.message }}
-            </p>
-          </div>
-        </section>
+          <button class="btn btn-outline btn-icon" title="刷新设备" :disabled="loadingDevices" @click="loadDevices">
+            <RefreshCw class="h-4 w-4" />
+          </button>
 
-        <section class="section">
-          <div class="section-head">
-            <h2>回放设备</h2>
-            <span class="count">{{ targetDeviceIds.length }} 台已选</span>
-          </div>
-          <div class="device-list replay-device-list">
-            <label v-for="device in devices" :key="`replay-${device.serial}`" class="device-row">
-              <input
-                type="checkbox"
-                :value="device.serial"
-                v-model="targetDeviceIds"
-                :disabled="device.state !== 'device'"
-              />
-              <span>
-                <strong>{{ device.serial }}</strong>
-                <small>{{ device.state }}</small>
-              </span>
-            </label>
-          </div>
-          <button class="primary full" :disabled="!canReplay || busy" @click="replayToTargets">确认无误并重新执行</button>
-          <div class="result-list">
-            <p v-for="item in replayResults" :key="item.device_id" :class="['result-line', item.ok ? 'ok' : 'bad']">
-              {{ item.device_id }} · {{ item.message }}
-            </p>
-          </div>
-        </section>
-      </aside>
-
-      <section class="chat-pane">
-        <div class="section chat-card">
-          <div class="section-head">
-            <h2>任务对话</h2>
-            <span class="status">{{ session ? `${session.status} · ${session.platform}` : "未开始" }}</span>
-          </div>
-
-          <div v-if="!session" class="mode-row">
-            <span>执行方式</span>
-            <label :class="['mode-option', executionMode === 'auto' ? 'active' : '']">
-              <input v-model="executionMode" type="radio" value="auto" />
-              自动执行
-            </label>
-            <label :class="['mode-option', executionMode === 'step' ? 'active' : '']">
-              <input v-model="executionMode" type="radio" value="step" />
-              单步调试
-            </label>
-          </div>
-
-          <div ref="messagesRef" class="messages">
-            <article v-for="(message, index) in displayMessages" :key="index" :class="['bubble', message.role]">
-              <p>{{ message.content }}</p>
-            </article>
-            <div v-if="showLatestActions" class="latest-actions">
-              <button class="secondary" :disabled="busy" @click="continueSession">{{ continueButtonText }}</button>
-              <button class="danger" :disabled="busy" @click="finishSession">结束任务</button>
+          <div v-if="setupPanelOpen" class="absolute right-0 top-12 z-50 w-[420px] rounded-lg border bg-card p-3 shadow-2xl">
+            <div class="flex items-center justify-between border-b pb-2">
+              <h2 class="text-sm font-semibold">输入法设置</h2>
+              <button class="btn btn-outline h-8 w-8 p-0" @click="setupPanelOpen = false">
+                <X class="h-4 w-4" />
+              </button>
             </div>
-            <div v-else-if="showNewConversation" class="latest-actions">
-              <button class="primary" :disabled="busy" @click="newConversation">新对话</button>
+            <div class="mt-3 grid max-h-[360px] gap-2 overflow-auto">
+              <div v-for="device in devices" :key="`keyboard-${device.serial}`" class="grid grid-cols-[1fr_auto] gap-3 rounded-md border p-3">
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-medium">{{ device.serial }}</p>
+                  <p :class="device.state === 'device' ? 'result-ok' : 'result-bad'">{{ device.state }}</p>
+                  <p
+                    v-if="keyboardSetupByDevice[device.serial]"
+                    :class="keyboardSetupByDevice[device.serial].ok ? 'result-ok' : 'result-bad'"
+                  >
+                    {{ keyboardSetupByDevice[device.serial].message }}
+                  </p>
+                </div>
+                <button
+                  class="btn btn-secondary"
+                  :disabled="device.state !== 'device' || installingDeviceId === device.serial || busy"
+                  @click="setupDeviceKeyboard(device.serial)"
+                >
+                  {{ installingDeviceId === device.serial ? "安装中" : "安装" }}
+                </button>
+              </div>
+              <p v-if="!devices.length" class="empty-state">暂无设备</p>
             </div>
-          </div>
-
-          <div class="composer">
-            <textarea
-              v-model="composerText"
-              class="hint-input"
-              :placeholder="session ? '输入人工提示，例如：先别下单，只停在搜索结果页' : '输入任务，例如：打开京东，搜索夜魔键盘'"
-            ></textarea>
-            <button class="send-btn" :disabled="!canSubmitComposer || busy" title="发送" @click="submitComposer">↑</button>
           </div>
         </div>
-      </section>
+      </header>
 
-      <aside class="right-pane">
-        <section class="section">
-          <div class="section-head">
-            <h2>手机画面</h2>
-            <button class="small-btn" :disabled="!sourceDeviceId" @click="refreshScreen">刷新</button>
-          </div>
-          <div class="phone-frame">
-            <img v-if="screenUrl" :src="screenUrl" alt="source phone screen" />
-            <span v-else>选择源设备</span>
-          </div>
-        </section>
-
-        <section class="section steps-section">
-          <div class="section-head">
-            <h2>已记录步骤</h2>
-            <span class="count">{{ session?.steps.length || 0 }}</span>
-          </div>
-          <ol class="steps">
-            <li v-for="step in session?.steps || []" :key="step.index">
-              <img v-if="step.image_url" :src="apiUrl(step.image_url)" alt="" />
+      <section class="grid flex-1 grid-cols-[300px_minmax(460px,1fr)_380px] gap-5 max-xl:grid-cols-1">
+        <aside class="grid content-start gap-5">
+          <section class="card">
+            <div class="card-head">
               <div>
-                <strong>{{ step.index }}. {{ stepTitle(step) }}</strong>
-                <small v-if="step.point_norm">坐标 {{ step.point_norm.join(", ") }}</small>
-                <p>{{ stepSummary(step) }}</p>
+                <h2 class="card-title">源设备</h2>
               </div>
-            </li>
-          </ol>
+              <span class="badge badge-success">{{ readyDevices.length }} 在线</span>
+            </div>
+
+            <div class="mt-4 grid gap-2">
+              <label
+                v-for="device in devices"
+                :key="device.serial"
+                :class="[
+                  'device-row',
+                  sourceDeviceId === device.serial ? 'device-row-active' : '',
+                  device.state !== 'device' ? 'opacity-50' : ''
+                ]"
+              >
+                <input
+                  v-model="sourceDeviceId"
+                  class="mt-1"
+                  type="radio"
+                  name="source-device"
+                  :value="device.serial"
+                  :disabled="device.state !== 'device'"
+                />
+                <Smartphone class="mt-0.5 h-4 w-4 text-muted-foreground" />
+                <span class="min-w-0">
+                  <strong class="block truncate text-sm font-medium">{{ device.serial }}</strong>
+                  <small class="text-xs text-muted-foreground">{{ device.state }}</small>
+                </span>
+              </label>
+              <p v-if="!devices.length && !deviceError" class="empty-state">等待设备接入</p>
+            </div>
+
+            <p v-if="deviceError" class="mt-3 text-sm text-destructive">{{ deviceError }}</p>
+          </section>
+
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <h2 class="card-title">回放设备</h2>
+              </div>
+              <span class="badge">{{ targetDeviceIds.length }} 台已选</span>
+            </div>
+
+            <div class="mt-4 grid gap-2">
+              <label
+                v-for="device in devices"
+                :key="`replay-${device.serial}`"
+                :class="[
+                  'device-row',
+                  targetDeviceIds.includes(device.serial) ? 'device-row-active' : '',
+                  device.state !== 'device' ? 'opacity-50' : ''
+                ]"
+              >
+                <input
+                  v-model="targetDeviceIds"
+                  class="mt-1"
+                  type="checkbox"
+                  :value="device.serial"
+                  :disabled="device.state !== 'device'"
+                />
+                <CopyCheck class="mt-0.5 h-4 w-4 text-muted-foreground" />
+                <span class="min-w-0">
+                  <strong class="block truncate text-sm font-medium">{{ device.serial }}</strong>
+                  <small class="text-xs text-muted-foreground">{{ device.state }}</small>
+                </span>
+              </label>
+            </div>
+
+            <button class="btn btn-primary mt-4 w-full" :disabled="!canReplay || busy" @click="replayToTargets">
+              <Play class="h-4 w-4" />
+              确认无误并重新执行
+            </button>
+
+            <div v-if="replayResults.length" class="mt-4 grid gap-2 rounded-md border bg-muted/40 p-3">
+              <p v-for="item in replayResults" :key="item.device_id" :class="item.ok ? 'result-ok' : 'result-bad'">
+                {{ item.device_id }} · {{ item.message }}
+              </p>
+            </div>
+          </section>
+        </aside>
+
+        <section class="card flex h-[calc(100vh-132px)] min-h-[560px] flex-col overflow-hidden max-xl:h-[720px]">
+          <div class="card-head">
+            <div>
+              <h2 class="card-title">任务对话</h2>
+            </div>
+            <span class="badge">{{ session ? `${session.status} · ${session.platform}` : "未开始" }}</span>
+          </div>
+
+          <div ref="messagesRef" class="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-auto rounded-lg border bg-muted/30 p-4">
+            <article v-for="(message, index) in displayMessages" :key="index" :class="bubbleClass(message.role)">
+              <p class="whitespace-pre-wrap break-words text-sm leading-6">{{ message.content }}</p>
+            </article>
+
+            <div v-if="showLatestActions" class="flex flex-wrap gap-2">
+              <button class="btn btn-secondary" :disabled="busy" @click="continueSession">
+                <Play class="h-4 w-4" />
+                {{ continueButtonText }}
+              </button>
+              <button class="btn btn-destructive" :disabled="busy && !autoRunning" @click="finishSession">
+                <Square class="h-4 w-4" />
+                {{ stopButtonText }}
+              </button>
+            </div>
+            <div v-else-if="showNewConversation" class="flex flex-wrap gap-2">
+              <button class="btn btn-primary" :disabled="busy" @click="newConversation">
+                <Plus class="h-4 w-4" />
+                新对话
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-4 flex items-end gap-3 rounded-xl border bg-card p-3 shadow-sm">
+            <div v-if="!session" class="relative self-end">
+              <button class="btn btn-outline h-11 px-3" @click="runModePanelOpen = !runModePanelOpen">
+                <Monitor class="h-4 w-4" />
+                {{ autoRun ? "自动执行" : "单步调试" }}
+                <ChevronDown class="h-4 w-4" />
+              </button>
+              <div v-if="runModePanelOpen" class="absolute bottom-12 left-0 z-40 w-72 rounded-lg border bg-card p-2 shadow-2xl">
+                <button class="menu-item" @click="selectRunMode(true)">
+                  <Monitor class="h-4 w-4" />
+                  <span class="flex-1 text-left">自动执行</span>
+                  <Check v-if="autoRun" class="h-4 w-4" />
+                </button>
+                <button class="menu-item" @click="selectRunMode(false)">
+                  <ListChecks class="h-4 w-4" />
+                  <span class="flex-1 text-left">单步调试</span>
+                  <Check v-if="!autoRun" class="h-4 w-4" />
+                </button>
+                <div class="my-2 border-t"></div>
+                <p class="px-2 pb-1 text-xs leading-5 text-muted-foreground">
+                  自动执行会连续运行任务，不在每一步询问；遇到登录、验证、支付等情况会停下等待人工处理。
+                </p>
+              </div>
+            </div>
+            <textarea
+              v-model="composerText"
+              class="min-h-[56px] flex-1 resize-y border-0 bg-transparent px-1 py-2 text-sm outline-none placeholder:text-muted-foreground"
+              :placeholder="session ? '输入人工提示，例如：先别下单，只停在搜索结果页' : '输入任务，例如：打开京东，搜索夜魔键盘'"
+            ></textarea>
+            <button class="btn btn-primary h-11 w-11 rounded-full p-0" :disabled="!canSubmitComposer || busy" title="发送" @click="submitComposer">
+              <ArrowUp class="h-5 w-5" />
+            </button>
+          </div>
         </section>
 
-        <section class="section workflow-section">
-          <div class="section-head">
-            <h2>下发流程 Prompt</h2>
-            <span class="count">{{ session?.workflow_prompt ? "已生成" : "等待步骤" }}</span>
-          </div>
-          <pre class="workflow-preview">{{ session?.workflow_prompt || "主手机执行后会生成给其他手机复用的 workflow prompt。" }}</pre>
-        </section>
-      </aside>
-    </section>
+        <aside class="grid content-start gap-5">
+          <section class="card">
+            <div class="card-head">
+              <div>
+                <h2 class="card-title">手机画面</h2>
+              </div>
+              <button class="btn btn-outline h-8 px-3 text-xs" :disabled="!sourceDeviceId" @click="refreshScreen">
+                <RefreshCw class="h-3.5 w-3.5" />
+                刷新
+              </button>
+            </div>
+            <div class="mx-auto mt-4 grid aspect-[9/19.5] w-[min(285px,100%)] place-items-center rounded-[28px] border bg-slate-950 p-3 shadow-2xl shadow-slate-900/20">
+              <img v-if="screenUrl" class="h-full w-full rounded-[20px] object-cover" :src="screenUrl" alt="source phone screen" />
+              <span v-else class="text-sm text-slate-400">选择源设备</span>
+            </div>
+          </section>
+
+          <section class="card max-h-[390px] overflow-auto">
+            <div class="card-head sticky -top-4 z-10 bg-card pb-3">
+              <div>
+                <h2 class="card-title">已记录步骤</h2>
+              </div>
+              <span class="badge">{{ session?.steps.length || 0 }}</span>
+            </div>
+
+            <ol class="mt-3 grid gap-3">
+              <li v-for="step in session?.steps || []" :key="step.index" class="grid grid-cols-[58px_1fr] gap-3 rounded-md border bg-muted/30 p-2">
+                <img v-if="step.image_url" class="h-[94px] w-[58px] rounded bg-slate-950 object-cover" :src="apiUrl(step.image_url)" alt="" />
+                <div v-else class="h-[94px] w-[58px] rounded bg-slate-950"></div>
+                <div class="min-w-0">
+                  <strong class="block truncate text-sm font-medium">{{ step.index }}. {{ stepTitle(step) }}</strong>
+                  <small v-if="step.point_norm" class="mt-1 block text-xs text-muted-foreground">坐标 {{ step.point_norm.join(", ") }}</small>
+                  <p class="mt-1 text-xs leading-5 text-muted-foreground">{{ stepSummary(step) }}</p>
+                </div>
+              </li>
+              <li v-if="!session?.steps?.length" class="empty-state">这里会保存模型实际执行过的动作、截图和关键参数，方便排查问题或复现任务。</li>
+            </ol>
+          </section>
+
+          <section class="card max-h-[330px] overflow-auto">
+            <div class="card-head sticky -top-4 z-10 bg-card pb-3">
+              <div>
+                <h2 class="card-title">下发给其他手机的指令</h2>
+              </div>
+              <span class="badge">{{ session?.workflow_prompt ? "已生成" : "等待步骤" }}</span>
+            </div>
+            <pre class="mt-3 whitespace-pre-wrap break-words rounded-md border bg-muted/40 p-3 text-xs leading-5 text-muted-foreground">{{ session?.workflow_prompt || "主手机执行后，会把任务目标和关键步骤整理成一段复用指令。回放设备会根据这段指令重新调用模型执行，而不是简单照抄坐标。" }}</pre>
+          </section>
+        </aside>
+      </section>
+    </div>
   </main>
 </template>
 
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  ArrowUp,
+  Check,
+  ChevronDown,
+  CopyCheck,
+  Keyboard,
+  ListChecks,
+  Monitor,
+  Play,
+  Plus,
+  RefreshCw,
+  Smartphone,
+  Square,
+  X,
+} from "lucide-vue-next";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -170,12 +283,17 @@ const targetDeviceIds = ref([]);
 const task = ref("");
 const DEFAULT_MAX_STEPS = 30;
 const session = ref(null);
-const executionMode = ref("auto");
+const autoRun = ref(false);
+const runModePanelOpen = ref(false);
+const setupPanelOpen = ref(false);
 const composerText = ref("");
 const screenUrl = ref("");
 const replayResults = ref([]);
-const keyboardSetupResult = ref(null);
+const keyboardSetupByDevice = ref({});
+const installingDeviceId = ref("");
 const busy = ref(false);
+const autoRunning = ref(false);
+const stopRequested = ref(false);
 const loadingDevices = ref(false);
 const deviceError = ref("");
 const messagesRef = ref(null);
@@ -193,7 +311,9 @@ const canSubmitComposer = computed(() => {
   return !sessionEnded.value;
 });
 const canReplay = computed(() => session.value?.steps?.length && targetDeviceIds.value.length);
-const continueButtonText = computed(() => (executionMode.value === "auto" ? "继续执行" : "继续下一步"));
+const executionMode = computed(() => (autoRun.value ? "auto" : "step"));
+const continueButtonText = computed(() => (autoRun.value ? "继续执行" : "继续下一步"));
+const stopButtonText = computed(() => (autoRunning.value && stopRequested.value ? "正在停止" : "结束任务"));
 const showLatestActions = computed(() => {
   return session.value && !sessionEnded.value;
 });
@@ -207,6 +327,16 @@ const displayMessages = computed(() => {
   }
   return session.value.messages;
 });
+
+function bubbleClass(role) {
+  if (role === "user") {
+    return "max-w-[86%] self-end rounded-lg bg-primary px-3 py-2 text-primary-foreground shadow-sm";
+  }
+  if (role === "assistant") {
+    return "max-w-[86%] self-start rounded-lg border bg-card px-3 py-2 shadow-sm";
+  }
+  return "max-w-[86%] self-start rounded-lg border bg-muted px-3 py-2 text-muted-foreground";
+}
 
 function apiUrl(path) {
   if (!path) return "";
@@ -316,7 +446,7 @@ async function startSession() {
       })
     });
     if (executionMode.value === "auto") {
-      await runToFinish();
+      await runAutoSteps();
     } else {
       await runNextStep();
     }
@@ -345,18 +475,30 @@ async function runNextStep() {
   }
 }
 
-async function runToFinish(hint = null) {
+async function runAutoSteps(hint = null) {
   if (!session.value) return;
+  autoRunning.value = true;
+  stopRequested.value = false;
   busy.value = true;
+  let nextHint = hint;
   try {
-    session.value = await request(`/api/sessions/${session.value.id}/run`, {
-      method: "POST",
-      body: JSON.stringify({ hint })
-    });
-    refreshScreenAfterAction();
+    while (session.value && !sessionEnded.value && !stopRequested.value) {
+      session.value = await request(`/api/sessions/${session.value.id}/step`, {
+        method: "POST",
+        body: JSON.stringify({ hint: nextHint })
+      });
+      nextHint = null;
+      refreshScreenAfterAction();
+      await nextTick();
+    }
+    if (stopRequested.value && session.value && !sessionEnded.value) {
+      await finishSessionNow();
+    }
   } catch (error) {
     alert(error.message);
   } finally {
+    autoRunning.value = false;
+    stopRequested.value = false;
     busy.value = false;
   }
 }
@@ -368,7 +510,7 @@ async function sendHint() {
   busy.value = true;
   try {
     if (executionMode.value === "auto") {
-      await runToFinish(content);
+      await runAutoSteps(content);
     } else {
       session.value = await request(`/api/sessions/${session.value.id}/step`, {
         method: "POST",
@@ -394,20 +536,26 @@ function submitComposer() {
 
 function continueSession() {
   if (executionMode.value === "auto") {
-    runToFinish();
+    runAutoSteps();
     return;
   }
   runNextStep();
 }
 
+function selectRunMode(enabled) {
+  autoRun.value = enabled;
+  runModePanelOpen.value = false;
+}
+
 async function finishSession() {
   if (!session.value) return;
+  if (autoRunning.value) {
+    stopRequested.value = true;
+    return;
+  }
   busy.value = true;
   try {
-    session.value = await request(`/api/sessions/${session.value.id}/finish`, {
-      method: "POST",
-      body: JSON.stringify({})
-    });
+    await finishSessionNow();
   } catch (error) {
     alert(error.message);
   } finally {
@@ -415,12 +563,19 @@ async function finishSession() {
   }
 }
 
+async function finishSessionNow() {
+  session.value = await request(`/api/sessions/${session.value.id}/finish`, {
+    method: "POST",
+    body: JSON.stringify({})
+  });
+}
+
 function newConversation() {
   session.value = null;
   task.value = "";
   composerText.value = "";
   replayResults.value = [];
-  keyboardSetupResult.value = null;
+  runModePanelOpen.value = false;
 }
 
 async function replayToTargets() {
@@ -442,22 +597,31 @@ async function replayToTargets() {
   }
 }
 
-async function setupAdbKeyboard() {
-  if (!sourceDeviceId.value) return;
-  busy.value = true;
-  keyboardSetupResult.value = null;
+async function setupDeviceKeyboard(deviceId) {
+  if (!deviceId) return;
+  installingDeviceId.value = deviceId;
   try {
-    keyboardSetupResult.value = await request(`/api/devices/${encodeURIComponent(sourceDeviceId.value)}/adb-keyboard/setup`, {
+    const result = await request(`/api/devices/${encodeURIComponent(deviceId)}/adb-keyboard/setup`, {
       method: "POST",
       body: JSON.stringify({})
     });
+    keyboardSetupByDevice.value = {
+      ...keyboardSetupByDevice.value,
+      [deviceId]: {
+        ok: result.ok,
+        message: result.ok ? "已安装并启用" : "设置未完全成功"
+      }
+    };
   } catch (error) {
-    keyboardSetupResult.value = {
-      ok: false,
-      steps: [{ name: "setup", ok: false, message: error.message }]
+    keyboardSetupByDevice.value = {
+      ...keyboardSetupByDevice.value,
+      [deviceId]: {
+        ok: false,
+        message: error.message
+      }
     };
   } finally {
-    busy.value = false;
+    installingDeviceId.value = "";
   }
 }
 

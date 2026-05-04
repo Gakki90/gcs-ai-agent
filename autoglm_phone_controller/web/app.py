@@ -96,9 +96,14 @@ async def watch_devices(websocket: WebSocket) -> None:
                     for d in await asyncio.to_thread(AdbClient().devices)
                 ]
                 await websocket.send_json({"type": "devices", "devices": devices, "error": None})
+            except WebSocketDisconnect:
+                raise
             except Exception as exc:
                 logger.exception("device websocket poll failed")
-                await websocket.send_json({"type": "devices", "devices": [], "error": _error_detail(exc)})
+                try:
+                    await websocket.send_json({"type": "devices", "devices": [], "error": _error_detail(exc)})
+                except WebSocketDisconnect:
+                    raise
             await asyncio.sleep(1.5)
     except WebSocketDisconnect:
         logger.info("device websocket disconnected")

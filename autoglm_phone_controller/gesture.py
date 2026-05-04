@@ -10,14 +10,14 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class GestureConfig:
     enabled: bool = True
-    tap_path_probability: float = 0.35
-    pre_action_delay_mean: float = 0.25
-    pre_action_delay_std: float = 0.12
-    post_action_delay_mean: float = 0.45
-    post_action_delay_std: float = 0.18
+    tap_path_probability: float = 0.1
+    pre_action_delay_mean: float = 0.0
+    pre_action_delay_std: float = 0.0
+    post_action_delay_mean: float = 0.0
+    post_action_delay_std: float = 0.0
     swipe_duration_mean_ms: float = 520.0
     swipe_duration_std_ms: float = 140.0
-    min_delay: float = 0.05
+    min_delay: float = 0.0
     max_delay: float = 1.0
     min_swipe_duration_ms: int = 180
     max_swipe_duration_ms: int = 1200
